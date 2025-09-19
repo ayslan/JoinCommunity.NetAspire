@@ -19,7 +19,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHttpClient("InnerApi", client =>
 {
-    client.BaseAddress = new Uri("https://localhost:7020");  
+    client.BaseAddress = new Uri("https://inner-api");  
 });
 
 var app = builder.Build();

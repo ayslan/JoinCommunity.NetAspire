@@ -10,11 +10,15 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo { Title = "Inner API", Version = "v1" });
 });
 
-builder.Services.AddDbContext<PokemonDb>(opt =>
-   opt.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+//builder.Services.AddDbContext<PokemonDb>(opt =>
+//   opt.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-   ConnectionMultiplexer.Connect("localhost:6379"));
+builder.AddRedisClient("redis");
+
+//builder.Services.AddSingleton<IConnectionMultiplexer>(
+//   ConnectionMultiplexer.Connect("localhost:6379"));
+
+builder.AddNpgsqlDbContext<PokemonDb>("pg");
 
 builder.Services.AddHttpClient();
 
