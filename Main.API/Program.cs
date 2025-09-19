@@ -6,12 +6,26 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo { Title = "Main API", Version = "v1" });
 });
 
+// Add CORS services
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactApp", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 builder.Services.AddHttpClient("InnerApi", client =>
 {
-    client.BaseAddress = new Uri("http://localhost:5001");  
+    client.BaseAddress = new Uri("https://localhost:7020");  
 });
 
 var app = builder.Build();
+
+// Use CORS middleware
+app.UseCors("AllowReactApp");
 
 if (app.Environment.IsDevelopment())
 {

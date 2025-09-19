@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
+using System.Text.Json.Nodes;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,8 @@ app.MapGet("/pokemon/{name}", async (string name, PokemonDb db, IHttpClientFacto
     }
 
     var client = factory.CreateClient();
+    var pokeApiResp2 = await client.GetFromJsonAsync<JsonObject>($"https://pokeapi.co/api/v2/pokemon/{name.ToLower()}");
+
     var pokeApiResp = await client.GetFromJsonAsync<PokeApiResponse>($"https://pokeapi.co/api/v2/pokemon/{name.ToLower()}");
     if (pokeApiResp is null) return Results.NotFound();
 
