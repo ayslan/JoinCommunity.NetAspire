@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Aspire.Microsoft.Data.SqlClient" Version="9.4.2" />
     <PackageReference Include="Aspire.StackExchange.Redis" Version="9.4.2" />
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="9.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.7.3" />
   </ItemGroup>
 

@@ -1,5 +1,14 @@
 var builder = WebApplication.CreateBuilder(args);
 
+// Add service discovery
+builder.Services.AddServiceDiscovery();
+
+// Configure HttpClient to use service discovery
+builder.Services.ConfigureHttpClientDefaults(http =>
+{
+    http.AddServiceDiscovery();
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -22,7 +31,11 @@ builder.Services.AddCors(options =>
 //    client.BaseAddress = new Uri("https://localhost:7020");  
 //});
 
-builder.Services.AddHttpClient<InnerApiClient>(o => o.BaseAddress = new("http://inner-api"));
+builder.Services.AddHttpClient<InnerApiClient>(client =>
+{
+    // This will be resolved by Aspire service discovery
+    client.BaseAddress = new Uri("http://inner-api");
+});
 
 var app = builder.Build();
 

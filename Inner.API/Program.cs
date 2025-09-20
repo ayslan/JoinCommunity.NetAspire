@@ -5,6 +5,9 @@ using System.Text.Json.Nodes;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add service discovery for Aspire
+builder.Services.AddServiceDiscovery();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
