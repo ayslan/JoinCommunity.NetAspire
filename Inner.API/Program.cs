@@ -12,26 +12,30 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // Register SQL connection string
-builder.Services.AddSingleton<string>(serviceProvider =>
-    builder.Configuration.GetConnectionString("SqlServer") ?? 
-    throw new InvalidOperationException("SqlServer connection string is not configured."));
+//builder.Services.AddSingleton<string>(serviceProvider =>
+//    builder.Configuration.GetConnectionString("SqlServer") ?? 
+//    throw new InvalidOperationException("SqlServer connection string is not configured."));
+
+builder.AddSqlServerClient("sqlserver");
 
 // Register database service
-builder.Services.AddSingleton<IPokemonRepository, PokemonRepository>();
+builder.Services.AddScoped<IPokemonRepository, PokemonRepository>();
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
-{
-    try
-    {
-        return ConnectionMultiplexer.Connect("localhost:6379");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Redis connection failed: {ex.Message}");
-        // Return a dummy connection multiplexer for development when Redis is not available
-        throw new InvalidOperationException("Redis is not available. Please ensure Redis is running or configure a fallback.");
-    }
-});
+//builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
+//{
+//    try
+//    {
+//        return ConnectionMultiplexer.Connect("localhost:6379");
+//    }
+//    catch (Exception ex)
+//    {
+//        Console.WriteLine($"Redis connection failed: {ex.Message}");
+//        // Return a dummy connection multiplexer for development when Redis is not available
+//        throw new InvalidOperationException("Redis is not available. Please ensure Redis is running or configure a fallback.");
+//    }
+//});
+
+builder.AddRedisClient("redis");
 
 builder.Services.AddHttpClient();
 
@@ -119,11 +123,11 @@ interface IPokemonRepository
 
 class PokemonRepository : IPokemonRepository
 {
-    private readonly string _connectionString;
+    private readonly SqlConnection _connection;
 
-    public PokemonRepository(string connectionString)
+    public PokemonRepository(SqlConnection connection)
     {
-        _connectionString = connectionString;
+        _connection = connection;
     }
 
     public async Task InitializeDatabaseAsync()
@@ -149,12 +153,12 @@ class PokemonRepository : IPokemonRepository
 
     public async Task<Pokemon?> GetPokemonByNameAsync(string name)
     {
-        using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
 
         using var command = new SqlCommand(
             "SELECT Id, Name, Height, Weight FROM Pokemons WHERE Name = @Name", 
-            connection);
+            _connection);
         command.Parameters.AddWithValue("@Name", name);
 
         using var reader = await command.ExecuteReaderAsync();
@@ -174,12 +178,12 @@ class PokemonRepository : IPokemonRepository
 
     public async Task<Pokemon> AddPokemonAsync(Pokemon pokemon)
     {
-        using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
 
         using var command = new SqlCommand(
             "INSERT INTO Pokemons (Name, Height, Weight) OUTPUT INSERTED.Id VALUES (@Name, @Height, @Weight)", 
-            connection);
+            _connection);
         command.Parameters.AddWithValue("@Name", pokemon.Name);
         command.Parameters.AddWithValue("@Height", pokemon.Height);
         command.Parameters.AddWithValue("@Weight", pokemon.Weight);
@@ -192,8 +196,8 @@ class PokemonRepository : IPokemonRepository
 
     private async Task ExecuteScriptAsync(string script)
     {
-        using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
 
         // Split script by GO statements and execute each batch
         var batches = script.Split(new[] { "\nGO\n", "\nGO\r\n", "\rGO\r", "\nGO", "GO\n" }, 
@@ -204,7 +208,7 @@ class PokemonRepository : IPokemonRepository
             var trimmedBatch = batch.Trim();
             if (string.IsNullOrEmpty(trimmedBatch)) continue;
 
-            using var command = new SqlCommand(trimmedBatch, connection);
+            using var command = new SqlCommand(trimmedBatch, _connection);
             await command.ExecuteNonQueryAsync();
         }
     }

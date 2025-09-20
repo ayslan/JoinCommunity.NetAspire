@@ -1,6 +1,4 @@
--- Create the Pokemons table
-USE [PokemonDb]
-GO
+---- Create the Pokemons table
 
 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Pokemons]') AND type in (N'U'))
 BEGIN
