@@ -12,9 +12,14 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // Register SQL connection string
-//builder.Services.AddSingleton<string>(serviceProvider =>
-//    builder.Configuration.GetConnectionString("SqlServer") ?? 
-//    throw new InvalidOperationException("SqlServer connection string is not configured."));
+//builder.Services.AddScoped<SqlConnection>(serviceProvider =>
+//{
+//    var config = serviceProvider.GetRequiredService<IConfiguration>();
+//    var connectionString = config.GetConnectionString("SqlServer")
+//        ?? throw new InvalidOperationException("SqlServer connection string is not configured.");
+
+//    return new SqlConnection(connectionString);
+//});
 
 builder.AddSqlServerClient("sqlserver");
 
