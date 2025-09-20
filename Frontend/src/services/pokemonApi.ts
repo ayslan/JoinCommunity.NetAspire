@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { config } from '../config/environment';
 
 export interface Pokemon {
     id: number;
@@ -13,7 +14,7 @@ export interface PokemonSummary {
 }
 
 const api = axios.create({
-    baseURL: 'https://localhost:7137',
+    baseURL: config.getMainApiUrl(),
     timeout: 10000,
 });
 
@@ -24,9 +25,9 @@ export const pokemonApi = {
         return response.data;
     },
 
-    // Direct call to Inner.API for full Pokemon data
+    // Direct call to Main.API for full Pokemon data
     getPokemonDetails: async (name: string): Promise<Pokemon> => {
-        const response = await api.get(`https://localhost:7137/summary/${name}`);
+        const response = await api.get(`/summary/${name}`);
         return response.data;
     },
 };

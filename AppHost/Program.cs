@@ -17,9 +17,11 @@ var mainApi = builder.AddProject<Projects.Main_API>("main-api")
     .WithReference(innerApi)
     .WaitFor(innerApi);
 
-//var webApp = builder.AddNpmApp("webapp", "../Frontend")
-//    .WithHttpEndpoint(env: "development")
-//    .WithReference(mainApi)
-//    .WaitFor(mainApi);
+var webApp = builder.AddNpmApp("webapp", "../Frontend")
+    .WithHttpEndpoint(port: 3000, env: "PORT")
+    .WithExternalHttpEndpoints()
+    .WithEnvironment("REACT_APP_MAIN_API_URL", mainApi.GetEndpoint("https"))
+    .WithReference(mainApi)
+    .WaitFor(mainApi);
 
 builder.Build().Run();

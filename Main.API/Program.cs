@@ -26,7 +26,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-//builder.Services.AddHttpClient("inner-api", client =>
+//builder.Services.AddHttpClient<InnerApiClient>(client =>
 //{
 //    client.BaseAddress = new Uri("https://localhost:7020");  
 //});
