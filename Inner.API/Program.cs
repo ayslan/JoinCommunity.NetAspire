@@ -1,4 +1,5 @@
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using StackExchange.Redis;
 using System.Text.Json.Nodes;
 
@@ -10,8 +11,13 @@ builder.Services.AddSwaggerGen(c =>
     c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo { Title = "Inner API", Version = "v1" });
 });
 
-builder.Services.AddDbContext<PokemonDb>(opt =>
-   opt.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer")));
+// Register SQL connection string
+builder.Services.AddSingleton<string>(serviceProvider =>
+    builder.Configuration.GetConnectionString("SqlServer") ?? 
+    throw new InvalidOperationException("SqlServer connection string is not configured."));
+
+// Register database service
+builder.Services.AddSingleton<IPokemonRepository, PokemonRepository>();
 
 builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
 {
@@ -42,26 +48,24 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Ensure database is created and up to date
+// Initialize database
 using (var scope = app.Services.CreateScope())
 {
-    var context = scope.ServiceProvider.GetRequiredService<PokemonDb>();
+    var repository = scope.ServiceProvider.GetRequiredService<IPokemonRepository>();
     try
     {
-        // This will create the database if it doesn't exist
-        // and ensure the schema matches the model
-        context.Database.EnsureCreated();
-        Console.WriteLine("Database created successfully or already exists.");
+        await repository.InitializeDatabaseAsync();
+        Console.WriteLine("Database initialized successfully.");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Database creation error: {ex.Message}");
+        Console.WriteLine($"Database initialization error: {ex.Message}");
         // Log the error but continue - the app can still run for other endpoints
     }
-}
+} 
 
 // GET /pokemon/{name}  
-app.MapGet("/pokemon/{name}", async (string name, PokemonDb db, IHttpClientFactory factory, IConnectionMultiplexer redis) =>
+app.MapGet("/pokemon/{name}", async ([FromRoute] string name, IPokemonRepository repository, IHttpClientFactory factory, IConnectionMultiplexer redis) =>
 {
     var cache = redis.GetDatabase();
     string cacheKey = $"pokemon:{name.ToLower()}";
@@ -70,7 +74,7 @@ app.MapGet("/pokemon/{name}", async (string name, PokemonDb db, IHttpClientFacto
     if (cached.HasValue)
         return Results.Ok(System.Text.Json.JsonSerializer.Deserialize<Pokemon>(cached!));
 
-    var dbPokemon = await db.Pokemons.FirstOrDefaultAsync(p => p.Name == name.ToLower());
+    var dbPokemon = await repository.GetPokemonByNameAsync(name.ToLower());
     if (dbPokemon != null)
     {
         await cache.StringSetAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(dbPokemon));
@@ -78,15 +82,13 @@ app.MapGet("/pokemon/{name}", async (string name, PokemonDb db, IHttpClientFacto
     }
 
     var client = factory.CreateClient();
-    var pokeApiResp2 = await client.GetFromJsonAsync<JsonObject>($"https://pokeapi.co/api/v2/pokemon/{name.ToLower()}");
 
     var pokeApiResp = await client.GetFromJsonAsync<PokeApiResponse>($"https://pokeapi.co/api/v2/pokemon/{name.ToLower()}");
     if (pokeApiResp is null) return Results.NotFound();
 
     var pokemon = new Pokemon { Name = pokeApiResp.name, Height = pokeApiResp.height, Weight = pokeApiResp.weight };
 
-    db.Pokemons.Add(pokemon);
-    await db.SaveChangesAsync();
+    await repository.AddPokemonAsync(pokemon);
 
     await cache.StringSetAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(pokemon));
 
@@ -108,8 +110,102 @@ record Pokemon
 
 record PokeApiResponse(string name, int height, int weight);
 
-class PokemonDb : DbContext
+interface IPokemonRepository
 {
-    public PokemonDb(DbContextOptions<PokemonDb> opts) : base(opts) { }
-    public DbSet<Pokemon> Pokemons => Set<Pokemon>();
+    Task InitializeDatabaseAsync();
+    Task<Pokemon?> GetPokemonByNameAsync(string name);
+    Task<Pokemon> AddPokemonAsync(Pokemon pokemon);
+}
+
+class PokemonRepository : IPokemonRepository
+{
+    private readonly string _connectionString;
+
+    public PokemonRepository(string connectionString)
+    {
+        _connectionString = connectionString;
+    }
+
+    public async Task InitializeDatabaseAsync()
+    {
+        // Read and execute database creation scripts
+        var scriptsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SqlScripts");
+        
+        if (!Directory.Exists(scriptsPath))
+        {
+            Console.WriteLine($"SqlScripts directory not found at: {scriptsPath}");
+            return;
+        }
+
+        var scriptFiles = Directory.GetFiles(scriptsPath, "*.sql").OrderBy(f => f).ToArray();
+        
+        foreach (var scriptFile in scriptFiles)
+        {
+            var script = await File.ReadAllTextAsync(scriptFile);
+            await ExecuteScriptAsync(script);
+            Console.WriteLine($"Executed script: {Path.GetFileName(scriptFile)}");
+        }
+    }
+
+    public async Task<Pokemon?> GetPokemonByNameAsync(string name)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        using var command = new SqlCommand(
+            "SELECT Id, Name, Height, Weight FROM Pokemons WHERE Name = @Name", 
+            connection);
+        command.Parameters.AddWithValue("@Name", name);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new Pokemon
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                Name = reader.GetString(reader.GetOrdinal("Name")),
+                Height = reader.GetInt32(reader.GetOrdinal("Height")),
+                Weight = reader.GetInt32(reader.GetOrdinal("Weight"))
+            };
+        }
+
+        return null;
+    }
+
+    public async Task<Pokemon> AddPokemonAsync(Pokemon pokemon)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        using var command = new SqlCommand(
+            "INSERT INTO Pokemons (Name, Height, Weight) OUTPUT INSERTED.Id VALUES (@Name, @Height, @Weight)", 
+            connection);
+        command.Parameters.AddWithValue("@Name", pokemon.Name);
+        command.Parameters.AddWithValue("@Height", pokemon.Height);
+        command.Parameters.AddWithValue("@Weight", pokemon.Weight);
+
+        var id = (int)(await command.ExecuteScalarAsync() ?? 0);
+        pokemon.Id = id;
+
+        return pokemon;
+    }
+
+    private async Task ExecuteScriptAsync(string script)
+    {
+        using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        // Split script by GO statements and execute each batch
+        var batches = script.Split(new[] { "\nGO\n", "\nGO\r\n", "\rGO\r", "\nGO", "GO\n" }, 
+            StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var batch in batches)
+        {
+            var trimmedBatch = batch.Trim();
+            if (string.IsNullOrEmpty(trimmedBatch)) continue;
+
+            using var command = new SqlCommand(trimmedBatch, connection);
+            await command.ExecuteNonQueryAsync();
+        }
+    }
 }
