@@ -17,10 +17,12 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddHttpClient("InnerApi", client =>
-{
-    client.BaseAddress = new Uri("https://localhost:7020");  
-});
+//builder.Services.AddHttpClient("inner-api", client =>
+//{
+//    client.BaseAddress = new Uri("https://localhost:7020");  
+//});
+
+builder.Services.AddHttpClient<InnerApiClient>(o => o.BaseAddress = new("http://inner-api"));
 
 var app = builder.Build();
 
@@ -42,16 +44,19 @@ app.MapGet("/", () => "Main API is running!")
     .WithSummary("Check if API is running")
     .WithDescription("Returns a simple message indicating the API is running");
 
-app.MapGet("/summary/{name}", async (string name, HttpContext context) =>
+app.MapGet("/summary/{name}", async (string name, InnerApiClient client) =>
 {
-    if (string.IsNullOrEmpty(name)) return Results.BadRequest("Name is required.");
+    if (string.IsNullOrEmpty(name))
+        return Results.BadRequest("Name is required.");
 
-    var factory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
-    var client = factory.CreateClient("InnerApi");
-    var pokemon = await client.GetFromJsonAsync<PokemonDto>($"/pokemon/{name}");
-    if (pokemon is null) return Results.NotFound();
+    var pokemon = await client.GetPokemonAsync(name);
+    if (pokemon is null)
+        return Results.NotFound();
 
-    return Results.Json(new { Info = $"{pokemon.Name} - Height: {pokemon.Height}, Weight: {pokemon.Weight}" });
+    return Results.Json(new
+    {
+        Info = $"{pokemon.Name} - Height: {pokemon.Height}, Weight: {pokemon.Weight}"
+    });
 })
 .WithName("GetPokemonSummary")
 .WithSummary("Get Pokemon summary")
@@ -59,4 +64,25 @@ app.MapGet("/summary/{name}", async (string name, HttpContext context) =>
 
 app.Run();
 
-record PokemonDto(string Name, int Height, int Weight);
+public record PokemonDto(string Name, int Height, int Weight);
+
+public class InnerApiClient
+{
+    private readonly HttpClient _http;
+
+    public InnerApiClient(HttpClient http)
+    {
+        _http = http;
+    }
+
+    public async Task<PokemonDto?> GetPokemonAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var response = await _http.GetAsync($"/pokemon/{name}", cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        return await response.Content.ReadFromJsonAsync<PokemonDto>(cancellationToken: cancellationToken);
+    }
+}
+
