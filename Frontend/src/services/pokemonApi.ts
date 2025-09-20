@@ -18,13 +18,11 @@ const api = axios.create({
 });
 
 export const pokemonApi = {
-    // Get Pokemon summary from Main.API
     getPokemonSummary: async (name: string): Promise<PokemonSummary> => {
         const response = await api.get(`/summary/${name}`);
         return response.data;
     },
 
-    // Direct call to Inner.API for full Pokemon data
     getPokemonDetails: async (name: string): Promise<Pokemon> => {
         const response = await api.get(`https://localhost:7137/summary/${name}`);
         return response.data;
