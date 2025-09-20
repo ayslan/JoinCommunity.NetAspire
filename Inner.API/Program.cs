@@ -11,10 +11,21 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddDbContext<PokemonDb>(opt =>
-   opt.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+   opt.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer")));
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(
-   ConnectionMultiplexer.Connect("localhost:6379"));
+builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
+{
+    try
+    {
+        return ConnectionMultiplexer.Connect("localhost:6379");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Redis connection failed: {ex.Message}");
+        // Return a dummy connection multiplexer for development when Redis is not available
+        throw new InvalidOperationException("Redis is not available. Please ensure Redis is running or configure a fallback.");
+    }
+});
 
 builder.Services.AddHttpClient();
 
@@ -37,7 +48,10 @@ using (var scope = app.Services.CreateScope())
     var context = scope.ServiceProvider.GetRequiredService<PokemonDb>();
     try
     {
+        // This will create the database if it doesn't exist
+        // and ensure the schema matches the model
         context.Database.EnsureCreated();
+        Console.WriteLine("Database created successfully or already exists.");
     }
     catch (Exception ex)
     {

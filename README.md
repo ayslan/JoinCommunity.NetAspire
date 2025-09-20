@@ -19,7 +19,7 @@ API/
 - **Purpose**: Core Pokemon data service
 - **Features**: 
   - Pokemon CRUD operations
-  - PostgreSQL database integration
+  - SQL Server database integration
   - Redis caching
   - Swagger documentation
   - Automatic database creation
@@ -43,7 +43,7 @@ API/
 
 - .NET 8.0 SDK
 - Node.js 16+ and npm
-- PostgreSQL 
+- SQL Server LocalDB 
 - Redis (optional - for caching)
 
 ## Getting Started
@@ -100,11 +100,11 @@ The React app will start on http://localhost:3000
 
 ## Database Configuration
 
-The Inner.API automatically creates the PostgreSQL database and tables on first run. 
+The Inner.API automatically creates the SQL Server database and tables on first run. 
 
 **Connection String** (configured in appsettings.json):
 ```
-Host=localhost;Port=5432;Database=pokemon_db;Username=postgres;Password=password
+Server=(localdb)\mssqllocaldb;Database=pokemon_db;Trusted_Connection=true;MultipleActiveResultSets=true
 ```
 
 ## Development Workflow
@@ -137,7 +137,7 @@ Some packages require Node.js 18+. Current warnings can be ignored for developme
 
 ## Technology Stack
 
-- **Backend**: .NET 8, Entity Framework Core, PostgreSQL, Redis, Swagger
+- **Backend**: .NET 8, Entity Framework Core, SQL Server, Redis, Swagger
 - **Frontend**: React 19, TypeScript, Axios, CSS3
 - **Development**: Hot reload, Swagger documentation, Git integration
 
