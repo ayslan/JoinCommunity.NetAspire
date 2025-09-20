@@ -12,12 +12,17 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // Register SQL connection string
-builder.Services.AddSingleton<string>(serviceProvider =>
-    builder.Configuration.GetConnectionString("SqlServer") ?? 
-    throw new InvalidOperationException("SqlServer connection string is not configured."));
+builder.Services.AddScoped<SqlConnection>(serviceProvider =>
+{
+    var config = serviceProvider.GetRequiredService<IConfiguration>();
+    var connectionString = config.GetConnectionString("SqlServer")
+        ?? throw new InvalidOperationException("SqlServer connection string is not configured.");
+
+    return new SqlConnection(connectionString);
+});
 
 // Register database service
-builder.Services.AddSingleton<IPokemonRepository, PokemonRepository>();
+builder.Services.AddScoped<IPokemonRepository, PokemonRepository>();
 
 builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
 {
@@ -62,7 +67,7 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine($"Database initialization error: {ex.Message}");
         // Log the error but continue - the app can still run for other endpoints
     }
-} 
+}
 
 // GET /pokemon/{name}  
 app.MapGet("/pokemon/{name}", async ([FromRoute] string name, IPokemonRepository repository, IHttpClientFactory factory, IConnectionMultiplexer redis) =>
@@ -119,18 +124,18 @@ interface IPokemonRepository
 
 class PokemonRepository : IPokemonRepository
 {
-    private readonly string _connectionString;
+    private readonly SqlConnection _connection;
 
-    public PokemonRepository(string connectionString)
+    public PokemonRepository(SqlConnection connection)
     {
-        _connectionString = connectionString;
+        _connection = connection;
     }
 
     public async Task InitializeDatabaseAsync()
     {
         // Read and execute database creation scripts
         var scriptsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SqlScripts");
-        
+
         if (!Directory.Exists(scriptsPath))
         {
             Console.WriteLine($"SqlScripts directory not found at: {scriptsPath}");
@@ -138,7 +143,7 @@ class PokemonRepository : IPokemonRepository
         }
 
         var scriptFiles = Directory.GetFiles(scriptsPath, "*.sql").OrderBy(f => f).ToArray();
-        
+
         foreach (var scriptFile in scriptFiles)
         {
             var script = await File.ReadAllTextAsync(scriptFile);
@@ -149,12 +154,12 @@ class PokemonRepository : IPokemonRepository
 
     public async Task<Pokemon?> GetPokemonByNameAsync(string name)
     {
-        using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
 
         using var command = new SqlCommand(
-            "SELECT Id, Name, Height, Weight FROM Pokemons WHERE Name = @Name", 
-            connection);
+            "SELECT Id, Name, Height, Weight FROM Pokemons WHERE Name = @Name",
+            _connection);
         command.Parameters.AddWithValue("@Name", name);
 
         using var reader = await command.ExecuteReaderAsync();
@@ -174,12 +179,12 @@ class PokemonRepository : IPokemonRepository
 
     public async Task<Pokemon> AddPokemonAsync(Pokemon pokemon)
     {
-        using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
 
         using var command = new SqlCommand(
-            "INSERT INTO Pokemons (Name, Height, Weight) OUTPUT INSERTED.Id VALUES (@Name, @Height, @Weight)", 
-            connection);
+            "INSERT INTO Pokemons (Name, Height, Weight) OUTPUT INSERTED.Id VALUES (@Name, @Height, @Weight)",
+            _connection);
         command.Parameters.AddWithValue("@Name", pokemon.Name);
         command.Parameters.AddWithValue("@Height", pokemon.Height);
         command.Parameters.AddWithValue("@Weight", pokemon.Weight);
@@ -192,11 +197,11 @@ class PokemonRepository : IPokemonRepository
 
     private async Task ExecuteScriptAsync(string script)
     {
-        using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
 
         // Split script by GO statements and execute each batch
-        var batches = script.Split(new[] { "\nGO\n", "\nGO\r\n", "\rGO\r", "\nGO", "GO\n" }, 
+        var batches = script.Split(new[] { "\nGO\n", "\nGO\r\n", "\rGO\r", "\nGO", "GO\n" },
             StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var batch in batches)
@@ -204,7 +209,7 @@ class PokemonRepository : IPokemonRepository
             var trimmedBatch = batch.Trim();
             if (string.IsNullOrEmpty(trimmedBatch)) continue;
 
-            using var command = new SqlCommand(trimmedBatch, connection);
+            using var command = new SqlCommand(trimmedBatch, _connection);
             await command.ExecuteNonQueryAsync();
         }
     }
