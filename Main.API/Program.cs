@@ -33,7 +33,6 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHttpClient<InnerApiClient>(client =>
 {
-    // This will be resolved by Aspire service discovery
     client.BaseAddress = new Uri("http://inner-api");
 });
 

@@ -3,7 +3,7 @@ using Aspire.Hosting;
 var builder = DistributedApplication.CreateBuilder(args);
 
 var sqlserver = builder.AddSqlServer("sqlserver")
-    .WithLifetime(ContainerLifetime.Persistent); ;
+    .WithLifetime(ContainerLifetime.Persistent);
 
 var redis = builder.AddRedis("redis");
 
